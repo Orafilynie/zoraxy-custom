@@ -59,6 +59,7 @@ func RegisterHTTPProxyAPIs(authRouter *auth.RouterDef) {
 	authRouter.HandleFunc("/api/proxy/header/handleHopByHop", HandleHopByHop)
 	authRouter.HandleFunc("/api/proxy/header/handleHostOverwrite", HandleHostOverwrite)
 	authRouter.HandleFunc("/api/proxy/header/handlePermissionPolicy", HandlePermissionPolicy)
+	authRouter.HandleFunc("/api/proxy/header/handleWsHeaderBehavior", HandleWsHeaderBehavior)
 	/* Reverse proxy auth related */
 	authRouter.HandleFunc("/api/proxy/auth/exceptions/list", ListProxyBasicAuthExceptionPaths)
 	authRouter.HandleFunc("/api/proxy/auth/exceptions/add", AddProxyBasicAuthExceptionPaths)
@@ -77,21 +78,9 @@ func RegisterTLSAPIs(authRouter *auth.RouterDef) {
 	authRouter.HandleFunc("/api/cert/delete", handleCertRemove)
 }
 
-// Register the APIs for SSO and Oauth functions, WIP
-func RegisterSSOAPIs(authRouter *auth.RouterDef) {
-	authRouter.HandleFunc("/api/sso/status", ssoHandler.HandleSSOStatus)
-	authRouter.HandleFunc("/api/sso/enable", ssoHandler.HandleSSOEnable)
-	authRouter.HandleFunc("/api/sso/setPort", ssoHandler.HandlePortChange)
-	authRouter.HandleFunc("/api/sso/setAuthURL", ssoHandler.HandleSetAuthURL)
-
-	authRouter.HandleFunc("/api/sso/app/register", ssoHandler.HandleRegisterApp)
-	//authRouter.HandleFunc("/api/sso/app/list", ssoHandler.HandleListApp)
-	//authRouter.HandleFunc("/api/sso/app/remove", ssoHandler.HandleRemoveApp)
-
-	authRouter.HandleFunc("/api/sso/user/list", ssoHandler.HandleListUser)
-	authRouter.HandleFunc("/api/sso/user/add", ssoHandler.HandleAddUser)
-	authRouter.HandleFunc("/api/sso/user/edit", ssoHandler.HandleEditUser)
-	authRouter.HandleFunc("/api/sso/user/remove", ssoHandler.HandleRemoveUser)
+// Register the APIs for Authentication handlers like Authelia and OAUTH2
+func RegisterAuthenticationHandlerAPIs(authRouter *auth.RouterDef) {
+	authRouter.HandleFunc("/api/sso/Authelia", autheliaRouter.HandleSetAutheliaURLAndHTTPS)
 }
 
 // Register the APIs for redirection rules management functions
@@ -99,6 +88,7 @@ func RegisterRedirectionAPIs(authRouter *auth.RouterDef) {
 	authRouter.HandleFunc("/api/redirect/list", handleListRedirectionRules)
 	authRouter.HandleFunc("/api/redirect/add", handleAddRedirectionRule)
 	authRouter.HandleFunc("/api/redirect/delete", handleDeleteRedirectionRule)
+	authRouter.HandleFunc("/api/redirect/edit", handleEditRedirectionRule)
 	authRouter.HandleFunc("/api/redirect/regex", handleToggleRedirectRegexpSupport)
 }
 
@@ -339,7 +329,7 @@ func initAPIs(targetMux *http.ServeMux) {
 	RegisterAuthAPIs(requireAuth, targetMux)
 	RegisterHTTPProxyAPIs(authRouter)
 	RegisterTLSAPIs(authRouter)
-	//RegisterSSOAPIs(authRouter)
+	RegisterAuthenticationHandlerAPIs(authRouter)
 	RegisterRedirectionAPIs(authRouter)
 	RegisterAccessRuleAPIs(authRouter)
 	RegisterPathRuleAPIs(authRouter)

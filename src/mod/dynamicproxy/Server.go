@@ -83,22 +83,11 @@ func (h *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		//SSO Interception Mode
-		if sep.UseSSOIntercept {
-			allowPass := h.Parent.Option.SSOHandler.ServeForwardAuth(w, r)
-			if !allowPass {
-				h.Parent.Option.Logger.LogHTTPRequest(r, "sso-x", 307)
-				return
-			}
-		}
-
 		//Validate basic auth
-		if sep.RequireBasicAuth {
-			err := h.handleBasicAuthRouting(w, r, sep)
-			if err != nil {
-				h.Parent.Option.Logger.LogHTTPRequest(r, "host", 401)
-				return
-			}
+		respWritten := handleAuthProviderRouting(sep, w, r, h)
+		if respWritten {
+			//Request handled by subroute
+			return
 		}
 
 		//Check if any virtual directory rules matches
@@ -108,7 +97,7 @@ func (h *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			//Virtual directory routing rule found. Route via vdir mode
 			h.vdirRequest(w, r, targetProxyEndpoint)
 			return
-		} else if !strings.HasSuffix(proxyingPath, "/") && sep.ProxyType != ProxyType_Root {
+		} else if !strings.HasSuffix(proxyingPath, "/") && sep.ProxyType != ProxyTypeRoot {
 			potentialProxtEndpoint := sep.GetVirtualDirectoryHandlerFromRequestURI(proxyingPath + "/")
 			if potentialProxtEndpoint != nil && !potentialProxtEndpoint.Disabled {
 				//Missing tailing slash. Redirect to target proxy endpoint
@@ -153,7 +142,7 @@ func (h *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 /*
 handleRootRouting
 
-This function handle root routing situations where there are no subdomain
+This function handle root routing (aka default sites) situations where there are no subdomain
 , vdir or special routing rule matches the requested URI.
 
 Once entered this routing segment, the root routing options will take over
@@ -180,7 +169,7 @@ func (h *ProxyHandler) handleRootRouting(w http.ResponseWriter, r *http.Request)
 			//Virtual directory routing rule found. Route via vdir mode
 			h.vdirRequest(w, r, targetProxyEndpoint)
 			return
-		} else if !strings.HasSuffix(proxyingPath, "/") && proot.ProxyType != ProxyType_Root {
+		} else if !strings.HasSuffix(proxyingPath, "/") && proot.ProxyType != ProxyTypeRoot {
 			potentialProxtEndpoint := proot.GetVirtualDirectoryHandlerFromRequestURI(proxyingPath + "/")
 			if potentialProxtEndpoint != nil && !targetProxyEndpoint.Disabled {
 				//Missing tailing slash. Redirect to target proxy endpoint
@@ -220,13 +209,40 @@ func (h *ProxyHandler) handleRootRouting(w http.ResponseWriter, r *http.Request)
 		http.Redirect(w, r, redirectTarget, http.StatusTemporaryRedirect)
 	case DefaultSite_NotFoundPage:
 		//Serve the not found page, use template if exists
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.WriteHeader(http.StatusNotFound)
-		template, err := os.ReadFile(filepath.Join(h.Parent.Option.WebDirectory, "templates/notfound.html"))
-		if err != nil {
-			w.Write(page_hosterror)
-		} else {
-			w.Write(template)
+		h.serve404PageWithTemplate(w, r)
+	case DefaultSite_NoResponse:
+		//No response. Just close the connection
+		h.Parent.logRequest(r, false, 444, "root-no_resp", domainOnly)
+		hijacker, ok := w.(http.Hijacker)
+		if !ok {
+			w.WriteHeader(http.StatusNoContent)
+			return
 		}
+		conn, _, err := hijacker.Hijack()
+		if err != nil {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		conn.Close()
+	case DefaultSite_TeaPot:
+		//I'm a teapot
+		h.Parent.logRequest(r, false, 418, "root-teapot", domainOnly)
+		http.Error(w, "I'm a teapot", http.StatusTeapot)
+	default:
+		//Unknown routing option. Send empty response
+		h.Parent.logRequest(r, false, 544, "root-unknown", domainOnly)
+		http.Error(w, "544 - No Route Defined", 544)
+	}
+}
+
+// Serve 404 page with template if exists
+func (h *ProxyHandler) serve404PageWithTemplate(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusNotFound)
+	template, err := os.ReadFile(filepath.Join(h.Parent.Option.WebDirectory, "templates/notfound.html"))
+	if err != nil {
+		w.Write(page_hosterror)
+	} else {
+		w.Write(template)
 	}
 }

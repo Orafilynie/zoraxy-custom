@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/gorilla/websocket"
+	"imuslab.com/zoraxy/mod/dynamicproxy/rewrite"
 	"imuslab.com/zoraxy/mod/info/logger"
 )
 
@@ -56,9 +57,11 @@ type WebsocketProxy struct {
 
 // Additional options for websocket proxy runtime
 type Options struct {
-	SkipTLSValidation bool           //Skip backend TLS validation
-	SkipOriginCheck   bool           //Skip origin check
-	Logger            *logger.Logger //Logger, can be nil
+	SkipTLSValidation  bool                         //Skip backend TLS validation
+	SkipOriginCheck    bool                         //Skip origin check
+	CopyAllHeaders     bool                         //Copy all headers from incoming request to backend request
+	UserDefinedHeaders []*rewrite.UserDefinedHeader //User defined headers
+	Logger             *logger.Logger               //Logger, can be nil
 }
 
 // ProxyHandler returns a new http.Handler interface that reverse proxies the
@@ -78,7 +81,14 @@ func NewProxy(target *url.URL, options Options) *WebsocketProxy {
 		u.RawQuery = r.URL.RawQuery
 		return &u
 	}
-	return &WebsocketProxy{Backend: backend, Verbal: false, Options: options}
+
+	// Create a new websocket proxy
+	wsprox := &WebsocketProxy{Backend: backend, Verbal: false, Options: options}
+	if options.CopyAllHeaders {
+		wsprox.Director = DefaultDirector
+	}
+
+	return wsprox
 }
 
 // Utilities function for log printing
@@ -88,6 +98,35 @@ func (w *WebsocketProxy) Println(messsage string, err error) {
 		return
 	}
 	log.Println("[websocketproxy] [system:info]"+messsage, err)
+}
+
+// DefaultDirector is the default implementation of Director, which copies
+// all headers from the incoming request to the outgoing request.
+func DefaultDirector(r *http.Request, h http.Header) {
+	//Copy all header values from request to target header
+	for k, vv := range r.Header {
+		for _, v := range vv {
+			h.Set(k, v)
+		}
+	}
+
+	// Remove hop-by-hop headers
+	for _, removePendingHeader := range []string{
+		"Connection",
+		"Keep-Alive",
+		"Proxy-Authenticate",
+		"Proxy-Authorization",
+		"Te",
+		"Trailers",
+		"Transfer-Encoding",
+		"Sec-WebSocket-Extensions",
+		"Sec-WebSocket-Key",
+		"Sec-WebSocket-Protocol",
+		"Sec-WebSocket-Version",
+		"Upgrade",
+	} {
+		h.Del(removePendingHeader)
+	}
 }
 
 // ServeHTTP implements the http.Handler that proxies WebSocket connections.
@@ -133,6 +172,11 @@ func (w *WebsocketProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	if req.Host != "" {
 		requestHeader.Set("Host", req.Host)
 	}
+	if userAgent := req.Header.Get("User-Agent"); userAgent != "" {
+		requestHeader.Set("User-Agent", userAgent)
+	} else {
+		requestHeader.Set("User-Agent", "zoraxy-wsproxy/1.1")
+	}
 
 	// Pass X-Forwarded-For headers too, code below is a part of
 	// httputil.ReverseProxy. See http://en.wikipedia.org/wiki/X-Forwarded-For
@@ -156,10 +200,29 @@ func (w *WebsocketProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		requestHeader.Set("X-Forwarded-Proto", "https")
 	}
 
-	// Enable the director to copy any additional headers it desires for
-	// forwarding to the remote server.
-	if w.Director != nil {
-		w.Director(req, requestHeader)
+	// Replace header variables and copy user-defined headers
+	if w.Options.CopyAllHeaders {
+		// Rewrite the user defined headers
+		// This is reported to be not compatible with Proxmox and Home Assistant
+		// but required by some other projects like MeshCentral
+		// we will make this optional
+		rewrittenUserDefinedHeaders := rewrite.PopulateRequestHeaderVariables(req, w.Options.UserDefinedHeaders)
+		upstreamHeaders, _ := rewrite.SplitUpDownStreamHeaders(&rewrite.HeaderRewriteOptions{
+			UserDefinedHeaders: rewrittenUserDefinedHeaders,
+		})
+		for _, headerValuePair := range upstreamHeaders {
+			//Do not copy Upgrade and Connection headers, it will be handled by the upgrader
+			if strings.EqualFold(headerValuePair[0], "Upgrade") || strings.EqualFold(headerValuePair[0], "Connection") {
+				continue
+			}
+			requestHeader.Set(headerValuePair[0], headerValuePair[1])
+		}
+
+		// Enable the director to copy any additional headers it desires for
+		// forwarding to the remote server.
+		if w.Director != nil {
+			w.Director(req, requestHeader)
+		}
 	}
 
 	// Connect to the backend URL, also pass the headers we get from the requst

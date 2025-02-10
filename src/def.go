@@ -16,7 +16,7 @@ import (
 	"imuslab.com/zoraxy/mod/access"
 	"imuslab.com/zoraxy/mod/acme"
 	"imuslab.com/zoraxy/mod/auth"
-	"imuslab.com/zoraxy/mod/auth/sso"
+	"imuslab.com/zoraxy/mod/auth/sso/authelia"
 	"imuslab.com/zoraxy/mod/database"
 	"imuslab.com/zoraxy/mod/dockerux"
 	"imuslab.com/zoraxy/mod/dynamicproxy/loadbalance"
@@ -42,11 +42,10 @@ import (
 const (
 	/* Build Constants */
 	SYSTEM_NAME       = "Zoraxy"
-	SYSTEM_VERSION    = "3.1.4"
+	SYSTEM_VERSION    = "3.1.7"
 	DEVELOPMENT_BUILD = false /* Development: Set to false to use embedded web fs */
 
 	/* System Constants */
-	DATABASE_PATH              = "sys.db"
 	TMP_FOLDER                 = "./tmp"
 	WEBSERV_DEFAULT_PORT       = 5487
 	MDNS_HOSTNAME_PREFIX       = "zoraxy_" /* Follow by node UUID */
@@ -59,7 +58,6 @@ const (
 	ACME_AUTORENEW_CONFIG_PATH = "./conf/acme_conf.json"
 	CSRF_COOKIENAME            = "zoraxy_csrf"
 	LOG_PREFIX                 = "zr"
-	LOG_FOLDER                 = "./log"
 	LOG_EXTENSION              = ".log"
 
 	/* Configuration Folder Storage Path Constants */
@@ -74,6 +72,7 @@ const (
 /* System Startup Flags */
 var (
 	webUIPort                  = flag.String("port", ":8000", "Management web interface listening port")
+	databaseBackend            = flag.String("db", "auto", "Database backend to use (leveldb, boltdb, auto) Note that fsdb will be used on unsupported platforms like RISCV")
 	noauth                     = flag.Bool("noauth", false, "Disable authentication for management interface")
 	showver                    = flag.Bool("version", false, "Show version of this server")
 	allowSshLoopback           = flag.Bool("sshlb", false, "Allow loopback web ssh connection (DANGER)")
@@ -85,9 +84,22 @@ var (
 	acmeAutoRenewInterval      = flag.Int("autorenew", 86400, "ACME auto TLS/SSL certificate renew check interval (seconds)")
 	acmeCertAutoRenewDays      = flag.Int("earlyrenew", 30, "Number of days to early renew a soon expiring certificate (days)")
 	enableHighSpeedGeoIPLookup = flag.Bool("fastgeoip", false, "Enable high speed geoip lookup, require 1GB extra memory (Not recommend for low end devices)")
-	staticWebServerRoot        = flag.String("webroot", "./www", "Static web server root folder. Only allow chnage in start paramters")
 	allowWebFileManager        = flag.Bool("webfm", true, "Enable web file manager for static web server root folder")
 	enableAutoUpdate           = flag.Bool("cfgupgrade", true, "Enable auto config upgrade if breaking change is detected")
+
+	/* Default Configuration Flags */
+	defaultInboundPort          = flag.Int("default_inbound_port", 443, "Default web server listening port")
+	defaultEnableInboundTraffic = flag.Bool("default_inbound_enabled", true, "If web server is enabled by default")
+
+	/* Path Configuration Flags */
+	//path_database  = flag.String("dbpath", "./sys.db", "Database path")
+	//path_conf      = flag.String("conf", "./conf", "Configuration folder path")
+	path_uuid      = flag.String("uuid", "./sys.uuid", "sys.uuid file path")
+	path_logFile   = flag.String("log", "./log", "Log folder path")
+	path_webserver = flag.String("webroot", "./www", "Static web server root folder. Only allow change in start paramters")
+
+	/* Maintaince Function Flags */
+	geoDbUpdate = flag.Bool("update_geoip", false, "Download the latest GeoIP data and exit")
 )
 
 /* Global Variables and Handlers */
@@ -127,7 +139,9 @@ var (
 	staticWebServer    *webserv.WebServer        //Static web server for hosting simple stuffs
 	forwardProxy       *forwardproxy.Handler     //HTTP Forward proxy, basically VPN for web browser
 	loadBalancer       *loadbalance.RouteManager //Global scope loadbalancer, store the state of the lb routing
-	ssoHandler         *sso.SSOHandler           //Single Sign On handler
+
+	//Authentication Provider
+	autheliaRouter *authelia.AutheliaRouter //Authelia router for Authelia authentication
 
 	//Helper modules
 	EmailSender       *email.Sender         //Email sender that handle email sending

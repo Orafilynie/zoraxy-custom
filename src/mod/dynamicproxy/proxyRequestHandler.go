@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 
+	"imuslab.com/zoraxy/mod/dynamicproxy/domainsniff"
 	"imuslab.com/zoraxy/mod/dynamicproxy/dpcore"
 	"imuslab.com/zoraxy/mod/dynamicproxy/rewrite"
 	"imuslab.com/zoraxy/mod/netutils"
@@ -35,6 +36,7 @@ func (router *Router) getTargetProxyEndpointFromRequestURI(requestURI string) *P
 // Get the proxy endpoint from hostname, which might includes checking of wildcard certificates
 func (router *Router) getProxyEndpointFromHostname(hostname string) *ProxyEndpoint {
 	var targetSubdomainEndpoint *ProxyEndpoint = nil
+	hostname = strings.ToLower(hostname)
 	ep, ok := router.ProxyEndpoints.Load(hostname)
 	if ok {
 		//Exact hit
@@ -142,10 +144,17 @@ func (h *ProxyHandler) hostRequest(w http.ResponseWriter, r *http.Request, targe
 			u, _ = url.Parse("wss://" + wsRedirectionEndpoint + requestURL)
 		}
 		h.Parent.logRequest(r, true, 101, "host-websocket", selectedUpstream.OriginIpOrDomain)
+
+		if target.HeaderRewriteRules == nil {
+			target.HeaderRewriteRules = GetDefaultHeaderRewriteRules()
+		}
+
 		wspHandler := websocketproxy.NewProxy(u, websocketproxy.Options{
-			SkipTLSValidation: selectedUpstream.SkipCertValidations,
-			SkipOriginCheck:   selectedUpstream.SkipWebSocketOriginCheck,
-			Logger:            h.Parent.Option.Logger,
+			SkipTLSValidation:  selectedUpstream.SkipCertValidations,
+			SkipOriginCheck:    selectedUpstream.SkipWebSocketOriginCheck,
+			CopyAllHeaders:     target.EnableWebsocketCustomHeaders,
+			UserDefinedHeaders: target.HeaderRewriteRules.UserDefinedHeaders,
+			Logger:             h.Parent.Option.Logger,
 		})
 		wspHandler.ServeHTTP(w, r)
 		return
@@ -160,15 +169,19 @@ func (h *ProxyHandler) hostRequest(w http.ResponseWriter, r *http.Request, targe
 	}
 
 	//Populate the user-defined headers with the values from the request
-	rewrittenUserDefinedHeaders := rewrite.PopulateRequestHeaderVariables(r, target.UserDefinedHeaders)
+	headerRewriteOptions := GetDefaultHeaderRewriteRules()
+	if target.HeaderRewriteRules != nil {
+		headerRewriteOptions = target.HeaderRewriteRules
+	}
+	rewrittenUserDefinedHeaders := rewrite.PopulateRequestHeaderVariables(r, headerRewriteOptions.UserDefinedHeaders)
 
 	//Build downstream and upstream header rules
 	upstreamHeaders, downstreamHeaders := rewrite.SplitUpDownStreamHeaders(&rewrite.HeaderRewriteOptions{
 		UserDefinedHeaders:           rewrittenUserDefinedHeaders,
-		HSTSMaxAge:                   target.HSTSMaxAge,
+		HSTSMaxAge:                   headerRewriteOptions.HSTSMaxAge,
 		HSTSIncludeSubdomains:        target.ContainsWildcardName(true),
-		EnablePermissionPolicyHeader: target.EnablePermissionPolicyHeader,
-		PermissionPolicy:             target.PermissionPolicy,
+		EnablePermissionPolicyHeader: headerRewriteOptions.EnablePermissionPolicyHeader,
+		PermissionPolicy:             headerRewriteOptions.PermissionPolicy,
 	})
 
 	//Handle the request reverse proxy
@@ -180,8 +193,8 @@ func (h *ProxyHandler) hostRequest(w http.ResponseWriter, r *http.Request, targe
 		PathPrefix:          "",
 		UpstreamHeaders:     upstreamHeaders,
 		DownstreamHeaders:   downstreamHeaders,
-		HostHeaderOverwrite: target.RequestHostOverwrite,
-		NoRemoveHopByHop:    target.DisableHopByHopHeaderRemoval,
+		HostHeaderOverwrite: headerRewriteOptions.RequestHostOverwrite,
+		NoRemoveHopByHop:    headerRewriteOptions.DisableHopByHopHeaderRemoval,
 		Version:             target.parent.Option.HostVersion,
 	})
 
@@ -219,11 +232,18 @@ func (h *ProxyHandler) vdirRequest(w http.ResponseWriter, r *http.Request, targe
 		if target.RequireTLS {
 			u, _ = url.Parse("wss://" + wsRedirectionEndpoint + r.URL.String())
 		}
+
+		if target.parent.HeaderRewriteRules != nil {
+			target.parent.HeaderRewriteRules = GetDefaultHeaderRewriteRules()
+		}
+
 		h.Parent.logRequest(r, true, 101, "vdir-websocket", target.Domain)
 		wspHandler := websocketproxy.NewProxy(u, websocketproxy.Options{
-			SkipTLSValidation: target.SkipCertValidations,
-			SkipOriginCheck:   true, //You should not use websocket via virtual directory. But keep this to true for compatibility
-			Logger:            h.Parent.Option.Logger,
+			SkipTLSValidation:  target.SkipCertValidations,
+			SkipOriginCheck:    target.parent.EnableWebsocketCustomHeaders, //You should not use websocket via virtual directory. But keep this to true for compatibility
+			CopyAllHeaders:     domainsniff.RequireWebsocketHeaderCopy(r),  //Left this as default to prevent nginx user setting / as vdir
+			UserDefinedHeaders: target.parent.HeaderRewriteRules.UserDefinedHeaders,
+			Logger:             h.Parent.Option.Logger,
 		})
 		wspHandler.ServeHTTP(w, r)
 		return
@@ -238,15 +258,20 @@ func (h *ProxyHandler) vdirRequest(w http.ResponseWriter, r *http.Request, targe
 	}
 
 	//Populate the user-defined headers with the values from the request
-	rewrittenUserDefinedHeaders := rewrite.PopulateRequestHeaderVariables(r, target.parent.UserDefinedHeaders)
+	headerRewriteOptions := GetDefaultHeaderRewriteRules()
+	if target.parent.HeaderRewriteRules != nil {
+		headerRewriteOptions = target.parent.HeaderRewriteRules
+	}
+
+	rewrittenUserDefinedHeaders := rewrite.PopulateRequestHeaderVariables(r, headerRewriteOptions.UserDefinedHeaders)
 
 	//Build downstream and upstream header rules, use the parent (subdomain) endpoint's headers
 	upstreamHeaders, downstreamHeaders := rewrite.SplitUpDownStreamHeaders(&rewrite.HeaderRewriteOptions{
 		UserDefinedHeaders:           rewrittenUserDefinedHeaders,
-		HSTSMaxAge:                   target.parent.HSTSMaxAge,
+		HSTSMaxAge:                   headerRewriteOptions.HSTSMaxAge,
 		HSTSIncludeSubdomains:        target.parent.ContainsWildcardName(true),
-		EnablePermissionPolicyHeader: target.parent.EnablePermissionPolicyHeader,
-		PermissionPolicy:             target.parent.PermissionPolicy,
+		EnablePermissionPolicyHeader: headerRewriteOptions.EnablePermissionPolicyHeader,
+		PermissionPolicy:             headerRewriteOptions.PermissionPolicy,
 	})
 
 	//Handle the virtual directory reverse proxy request
@@ -257,7 +282,7 @@ func (h *ProxyHandler) vdirRequest(w http.ResponseWriter, r *http.Request, targe
 		PathPrefix:          target.MatchingPath,
 		UpstreamHeaders:     upstreamHeaders,
 		DownstreamHeaders:   downstreamHeaders,
-		HostHeaderOverwrite: target.parent.RequestHostOverwrite,
+		HostHeaderOverwrite: headerRewriteOptions.RequestHostOverwrite,
 		Version:             target.parent.parent.Option.HostVersion,
 	})
 

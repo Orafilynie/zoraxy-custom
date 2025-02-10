@@ -144,7 +144,7 @@ func (router *Router) StartProxyService() error {
 						}
 
 						//Validate basic auth
-						if sep.RequireBasicAuth {
+						if sep.AuthenticationProvider.AuthMethod == AuthMethodBasic {
 							err := handleBasicAuth(w, r, sep)
 							if err != nil {
 								return
@@ -157,12 +157,18 @@ func (router *Router) StartProxyService() error {
 							router.Option.Logger.PrintAndLog("dprouter", "failed to get upstream for hostname", err)
 							router.logRequest(r, false, 404, "vdir-http", r.Host)
 						}
+
+						endpointProxyRewriteRules := GetDefaultHeaderRewriteRules()
+						if sep.HeaderRewriteRules != nil {
+							endpointProxyRewriteRules = sep.HeaderRewriteRules
+						}
+
 						selectedUpstream.ServeHTTP(w, r, &dpcore.ResponseRewriteRuleSet{
 							ProxyDomain:         selectedUpstream.OriginIpOrDomain,
 							OriginalHost:        originalHostHeader,
 							UseTLS:              selectedUpstream.RequireTLS,
-							HostHeaderOverwrite: sep.RequestHostOverwrite,
-							NoRemoveHopByHop:    sep.DisableHopByHopHeaderRemoval,
+							HostHeaderOverwrite: endpointProxyRewriteRules.RequestHostOverwrite,
+							NoRemoveHopByHop:    endpointProxyRewriteRules.DisableHopByHopHeaderRemoval,
 							PathPrefix:          "",
 							Version:             sep.parent.Option.HostVersion,
 						})
@@ -185,7 +191,24 @@ func (router *Router) StartProxyService() error {
 							w.Write([]byte("400 - Bad Request"))
 						} else {
 							//No defined sub-domain
-							http.NotFound(w, r)
+							if router.Root.DefaultSiteOption == DefaultSite_NoResponse {
+								//No response. Just close the connection
+								hijacker, ok := w.(http.Hijacker)
+								if !ok {
+									w.Header().Set("Connection", "close")
+									return
+								}
+								conn, _, err := hijacker.Hijack()
+								if err != nil {
+									w.Header().Set("Connection", "close")
+									return
+								}
+								conn.Close()
+							} else {
+								//Default behavior
+								http.NotFound(w, r)
+							}
+
 						}
 
 					}
@@ -331,7 +354,7 @@ func (router *Router) LoadProxy(matchingDomain string) (*ProxyEndpoint, error) {
 			return true
 		}
 
-		if key == matchingDomain {
+		if key == strings.ToLower(matchingDomain) {
 			targetProxyEndpoint = v
 		}
 		return true

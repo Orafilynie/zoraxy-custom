@@ -1,3 +1,53 @@
+# v3.1.7 08 Feb 2025
+
++ Merged and added new tagging system for HTTP Proxy rules [by @adoolaard](https://github.com/adoolaard)
++ Added inline editing for redirection rules [#510](https://github.com/tobychui/zoraxy/issues/510)
++ Added uptime monitor status dot detail info (now clickable) [#467](https://github.com/tobychui/zoraxy/issues/467)
++ Added close connection support to port 80 listener [#405](https://github.com/tobychui/zoraxy/issues/450)
++ Optimized port collision check on startup
++ Optimized dark theme color scheme (Free consultation by 3S Design studio)
++ Fixed capital letter rule unable to delete bug [#507](https://github.com/tobychui/zoraxy/issues/507)
++ Fixed docker statistic not save bug [by @PassiveLemon](https://github.com/PassiveLemon) [#505](https://github.com/tobychui/zoraxy/issues/505)
+
+
+# v3.1.6 31 Dec 2024
+
+
++ Exposed log file, sys.uuid and static web server path to start flag (customizable conf and sys.db path is still wip)
++ Optimized connection close implementation
++ Added toggle for uptime monitor
++ Added optional copy HTTP custom headers to websocket connection [#444](https://github.com/tobychui/zoraxy/issues/444)
+
+# v3.1.5 28 Dec 2024
+
++ Fixed hostname case sensitive bug [#435](https://github.com/tobychui/zoraxy/issues/435)
++ Fixed ACME table too wide css bug [#422](https://github.com/tobychui/zoraxy/issues/422)
++ Fixed HSTS toggle button bug [#415](https://github.com/tobychui/zoraxy/issues/415)
++ Fixed slow GeoIP resolve mode concurrent r/w bug [#401](https://github.com/tobychui/zoraxy/issues/401)
++ Added close connection as default site option [#430](https://github.com/tobychui/zoraxy/issues/430)
++ Added experimental authelia support [#384](https://github.com/tobychui/zoraxy/issues/384)
++ Added custom header support to websocket [#426](https://github.com/tobychui/zoraxy/issues/426)
++ Added levelDB as database implementation (not currently used)
++ Added external GeoIP db loading support
++ Restructured a lot of modules
+
+# v3.1.4 24 Nov 2024
+
++ **Added Dark Theme Mode** [#390](https://github.com/tobychui/zoraxy/issues/390) [#82](https://github.com/tobychui/zoraxy/issues/82)
++ Added an auto sniffer for self-signed certificates
++ Added robots.txt to the project
++ Introduced an EU wrapper in the front-end for automatic registration of 26 countries [#378](https://github.com/tobychui/zoraxy/issues/378)
++ Moved all hard-coded values to a dedicated def.go file
++ Fixed a panic issue occurring on unsupported platform exits
++ Integrated fixes for SSH proxy and Docker snippet updates [#330](https://github.com/tobychui/zoraxy/issues/330) [#348](https://github.com/tobychui/zoraxy/issues/348)
++ **Changed the default listening port to 443 and enable TLS by default**
++ Optimized GeoIP database slow-search mode CPU usage
+
+
+# v3.1.3 12 Nov 2024
+
++ Fixed a critical security bug [CVE-2024-52010](https://github.com/advisories/GHSA-7hpf-g48v-hw3j)
+
 # v3.1.2 03 Nov 2024
 
 + Added auto start port 80 listener on acme certificate generator

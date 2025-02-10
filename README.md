@@ -101,12 +101,20 @@ Usage of zoraxy:
         ACME auto TLS/SSL certificate renew check interval (seconds) (default 86400)
   -cfgupgrade
         Enable auto config upgrade if breaking change is detected (default true)
+  -db string
+        Database backend to use (leveldb, boltdb, auto) Note that fsdb will be used on unsupported platforms like RISCV (default "auto")
+  -default_inbound_enabled
+        If web server is enabled by default (default true)
+  -default_inbound_port int
+        Default web server listening port (default 443)
   -docker
         Run Zoraxy in docker compatibility mode
   -earlyrenew int
         Number of days to early renew a soon expiring certificate (days) (default 30)
   -fastgeoip
         Enable high speed geoip lookup, require 1GB extra memory (Not recommend for low end devices)
+  -log string
+        Log folder path (default "./log")
   -mdns
         Enable mDNS scanner and transponder (default true)
   -mdnsname string
@@ -117,12 +125,16 @@ Usage of zoraxy:
         Management web interface listening port (default ":8000")
   -sshlb
         Allow loopback web ssh connection (DANGER)
+  -update_geoip
+        Download the latest GeoIP data and exit
+  -uuid string
+        sys.uuid file path (default "./sys.uuid")
   -version
         Show version of this server
   -webfm
         Enable web file manager for static web server root folder (default true)
   -webroot string
-        Static web server root folder. Only allow chnage in start paramters (default "./www")
+        Static web server root folder. Only allow change in start paramters (default "./www")
   -ztauth string
         ZeroTier authtoken for the local node
   -ztport int
@@ -137,7 +149,8 @@ If you already have an upstream reverse proxy server in place with permission ma
 ./zoraxy -noauth=true
 ```
 
-*Note: For security reasons, you should only enable no-auth if you are running Zoraxy in a trusted environment or with another authentication management proxy in front.*
+> [!WARNING]
+> For security reasons, you should only enable no-auth if you are running Zoraxy in a trusted environment or with another authentication management proxy in front.*
 
 ## Screenshots
 
@@ -157,7 +170,7 @@ This project also compatible with [ZeroTier](https://www.zerotier.com/). However
 
 To use Zoraxy with ZeroTier, assuming you already have a valid license, install ZeroTier on your host and then run Zoraxy in sudo mode (or Run As Administrator if you are on Windows). The program will automatically grab the authtoken in the correct location on your host.
 
-If you prefer not to run Zoraxy in sudo mode or you have some weird installation profile, you can also pass in the ZeroTier auth token using the following flags::
+If you prefer not to run Zoraxy in sudo mode or you have some weird installation profile, you can also pass in the ZeroTier auth token using the following flags:
 
 ```bash
 ./zoraxy -ztauth="your_zerotier_authtoken" -ztport=9993
@@ -178,7 +191,7 @@ Web SSH currently only supports Linux based OSes. The following platforms are su
 
 ### Loopback Connection
 
-Loopback web SSH connection, by default, is disabled. This means that if you are trying to connect to an address like 127.0.0.1 or localhost, the system will reject your connection for security reasons. To enable loopback for testing or development purpose, use the following flags to override the loopback checking:
+Loopback web SSH connections, by default, are disabled. This means that if you are trying to connect to an address like 127.0.0.1 or localhost, the system will reject your connection for security reasons. To enable loopback for testing or development purpose, use the following flags to override the loopback checking:
 
 ```bash
 ./zoraxy -sshlb=true

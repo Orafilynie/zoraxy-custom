@@ -27,7 +27,12 @@ import (
 
 // Check if a user define header exists in this endpoint, ignore case
 func (ep *ProxyEndpoint) UserDefinedHeaderExists(key string) bool {
-	for _, header := range ep.UserDefinedHeaders {
+	endpointProxyRewriteRules := GetDefaultHeaderRewriteRules()
+	if ep.HeaderRewriteRules != nil {
+		endpointProxyRewriteRules = ep.HeaderRewriteRules
+	}
+
+	for _, header := range endpointProxyRewriteRules.UserDefinedHeaders {
 		if strings.EqualFold(header.Key, key) {
 			return true
 		}
@@ -38,13 +43,16 @@ func (ep *ProxyEndpoint) UserDefinedHeaderExists(key string) bool {
 // Remvoe a user defined header from the list
 func (ep *ProxyEndpoint) RemoveUserDefinedHeader(key string) error {
 	newHeaderList := []*rewrite.UserDefinedHeader{}
-	for _, header := range ep.UserDefinedHeaders {
+	if ep.HeaderRewriteRules == nil {
+		ep.HeaderRewriteRules = GetDefaultHeaderRewriteRules()
+	}
+	for _, header := range ep.HeaderRewriteRules.UserDefinedHeaders {
 		if !strings.EqualFold(header.Key, key) {
 			newHeaderList = append(newHeaderList, header)
 		}
 	}
 
-	ep.UserDefinedHeaders = newHeaderList
+	ep.HeaderRewriteRules.UserDefinedHeaders = newHeaderList
 
 	return nil
 }
@@ -55,8 +63,11 @@ func (ep *ProxyEndpoint) AddUserDefinedHeader(newHeaderRule *rewrite.UserDefined
 		ep.RemoveUserDefinedHeader(newHeaderRule.Key)
 	}
 
+	if ep.HeaderRewriteRules == nil {
+		ep.HeaderRewriteRules = GetDefaultHeaderRewriteRules()
+	}
 	newHeaderRule.Key = cases.Title(language.Und, cases.NoLower).String(newHeaderRule.Key)
-	ep.UserDefinedHeaders = append(ep.UserDefinedHeaders, newHeaderRule)
+	ep.HeaderRewriteRules.UserDefinedHeaders = append(ep.HeaderRewriteRules.UserDefinedHeaders, newHeaderRule)
 	return nil
 }
 
@@ -106,7 +117,7 @@ func (ep *ProxyEndpoint) RemoveVirtualDirectoryRuleByMatchingPath(matchingPath s
 	return errors.New("target virtual directory routing rule not found")
 }
 
-// Delete a vdir rule by its matching path
+// Add a vdir rule by its matching path
 func (ep *ProxyEndpoint) AddVirtualDirectoryRule(vdir *VirtualDirectoryEndpoint) (*ProxyEndpoint, error) {
 	//Check for matching path duplicate
 	if ep.GetVirtualDirectoryRuleByMatchingPath(vdir.MatchingPath) != nil {
@@ -123,9 +134,9 @@ func (ep *ProxyEndpoint) AddVirtualDirectoryRule(vdir *VirtualDirectoryEndpoint)
 		return nil, err
 	}
 
-	if ep.ProxyType == ProxyType_Root {
+	if ep.ProxyType == ProxyTypeRoot {
 		parentRouter.Root = readyRoutingRule
-	} else if ep.ProxyType == ProxyType_Host {
+	} else if ep.ProxyType == ProxyTypeHost {
 		ep.Remove()
 		parentRouter.AddProxyRouteToRuntime(readyRoutingRule)
 	} else {
@@ -256,7 +267,8 @@ func (ep *ProxyEndpoint) Clone() *ProxyEndpoint {
 
 // Remove this proxy endpoint from running proxy endpoint list
 func (ep *ProxyEndpoint) Remove() error {
-	ep.parent.ProxyEndpoints.Delete(ep.RootOrMatchingDomain)
+	lookupHostname := strings.ToLower(ep.RootOrMatchingDomain)
+	ep.parent.ProxyEndpoints.Delete(lookupHostname)
 	return nil
 }
 
@@ -264,5 +276,6 @@ func (ep *ProxyEndpoint) Remove() error {
 // use prepare -> remove -> add if you change anything in the endpoint
 // that effects the proxy routing src / dest
 func (ep *ProxyEndpoint) UpdateToRuntime() {
-	ep.parent.ProxyEndpoints.Store(ep.RootOrMatchingDomain, ep)
+	lookupHostname := strings.ToLower(ep.RootOrMatchingDomain)
+	ep.parent.ProxyEndpoints.Store(lookupHostname, ep)
 }
