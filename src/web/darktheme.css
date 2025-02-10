@@ -12,7 +12,7 @@ body:not(.darkTheme){
     --theme_bg_primary: #ffffff;
     --theme_bg_secondary: #ffffff;
     --theme_bg_active: #ececec;
-    --theme_highlight: #a9d1f3;
+    --theme_highlight: #fdc5a0;
     --theme_bg_inverted: #27292d;
     --theme_advance: #f7f7f7;
     --item_color: #5e5d5d;
@@ -24,9 +24,9 @@ body:not(.darkTheme){
     --button_text_color: #878787;
     --button_border_color: #dedede;
 
-    --theme_background: linear-gradient(60deg, rgb(84, 58, 183) 0%, rgb(0, 172, 193) 100%);
+    --theme_background: linear-gradient(60deg, rgb(252, 108, 25) 0%, rgb(252, 158, 96) 100%);
     --theme_background_inverted: linear-gradient(215deg, rgba(38,60,71,1) 13%, rgba(2,3,42,1) 84%);
-    --theme_green: linear-gradient(270deg, #27e7ff, #00ca52);
+    --theme_green: linear-gradient(270deg, #fcb67e, #fa8f51);
     --theme_red: linear-gradient(203deg, rgba(250,172,38,1) 17%, rgba(202,0,37,1) 78%);
 }
 

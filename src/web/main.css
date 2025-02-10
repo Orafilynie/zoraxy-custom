@@ -10,6 +10,15 @@
     color: var(--text_color_inverted);
 }
 
+img{
+    -khtml-user-select: none;
+    -o-user-select: none;
+    -moz-user-select: none;
+    -webkit-user-select: none;
+    user-select: none;
+    pointer-events: none;
+}
+
 body.darkTheme #themeColorButton{
     background-color: white;
 }
@@ -291,7 +300,7 @@ body{
 .menudivider{
     font-size: 0.8em !important;
     color: #9c9c9c !important;
-    padding-left: 0.6em;
+    padding-left: 0.85em;
 }
 
 /*
@@ -354,7 +363,7 @@ body{
 }
 
 #serverstatus.green{
-    background: linear-gradient(60deg, #27e7ff, #00ca52);
+    background: linear-gradient(270deg, #fcb67e, #fa8f51);
 }
 #serverstatus.green .sub.header{
     color: rgb(224, 224, 224);
